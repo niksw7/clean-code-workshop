@@ -11,14 +11,20 @@ import (
 	"sync/atomic"
 )
 
+const (
+	Base     = 10
+	KiloByte = 1000
+	MegaByte = 1000 * KiloByte
+	GigaByte = 1000 * MegaByte
+	TeraByte = 1000 * GigaByte
+)
+
 func traverseDir(hashes, duplicates map[string]string, dupeSize *int64, entries []os.FileInfo, directory string) {
 	for _, entry := range entries {
-		fullpath := (path.Join(directory, entry.Name()))
-
+		fullpath := path.Join(directory, entry.Name())
 		if !entry.Mode().IsDir() && !entry.Mode().IsRegular() {
 			continue
 		}
-
 		if entry.IsDir() {
 			dirFiles, err := ioutil.ReadDir(fullpath)
 			if err != nil {
@@ -27,16 +33,10 @@ func traverseDir(hashes, duplicates map[string]string, dupeSize *int64, entries 
 			traverseDir(hashes, duplicates, dupeSize, dirFiles, fullpath)
 			continue
 		}
-		file, err := ioutil.ReadFile(fullpath)
-		if err != nil {
-			panic(err)
+		hashString, hashErr := generateSHA1(fullpath)
+		if hashErr != nil {
+			panic(hashErr)
 		}
-		hash := sha1.New()
-		if _, err := hash.Write(file); err != nil {
-			panic(err)
-		}
-		hashSum := hash.Sum(nil)
-		hashString := fmt.Sprintf("%x", hashSum)
 		if hashEntry, ok := hashes[hashString]; ok {
 			duplicates[hashEntry] = fullpath
 			atomic.AddInt64(dupeSize, entry.Size())
@@ -46,20 +46,33 @@ func traverseDir(hashes, duplicates map[string]string, dupeSize *int64, entries 
 	}
 }
 
+func generateSHA1(filePath string) (string, error) {
+	file, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return "", err
+	}
+	hash := sha1.New()
+	if _, err := hash.Write(file); err != nil {
+		return "", err
+	}
+	hashSum := hash.Sum(nil)
+	return fmt.Sprintf("%x", hashSum), nil
+}
+
 func toReadableSize(nbytes int64) string {
-	if nbytes > 1000*1000*1000*1000 {
-		return strconv.FormatInt(nbytes/(1000*1000*1000*1000), 10) + " TB"
+	if nbytes > TeraByte {
+		return strconv.FormatInt(nbytes/(TeraByte), Base) + " TB"
 	}
-	if nbytes > 1000*1000*1000 {
-		return strconv.FormatInt(nbytes/(1000*1000*1000), 10) + " GB"
+	if nbytes > GigaByte {
+		return strconv.FormatInt(nbytes/(GigaByte), Base) + " GB"
 	}
-	if nbytes > 1000*1000 {
-		return strconv.FormatInt(nbytes/(1000*1000), 10) + " MB"
+	if nbytes > MegaByte {
+		return strconv.FormatInt(nbytes/(MegaByte), Base) + " MB"
 	}
-	if nbytes > 1000 {
-		return strconv.FormatInt(nbytes/1000, 10) + " KB"
+	if nbytes > KiloByte {
+		return strconv.FormatInt(nbytes/KiloByte, Base) + " KB"
 	}
-	return strconv.FormatInt(nbytes, 10) + " B"
+	return strconv.FormatInt(nbytes, Base) + " B"
 }
 
 func main() {
